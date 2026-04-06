@@ -1,120 +1,174 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useMemo, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import './App.css'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5093'
+
+async function fetchJson(url, options) {
+  const response = await fetch(url, options)
+  const contentType = response.headers.get('content-type')
+  const isJson = contentType?.includes('application/json')
+
+  if (!response.ok) {
+    const body = isJson ? await response.json().catch(() => null) : await response.text().catch(() => null)
+    const message =
+      (body && typeof body === 'object' && (body.message || body.error)) ||
+      (typeof body === 'string' && body.trim()) ||
+      `${response.status} ${response.statusText}`
+    throw new Error(message)
+  }
+
+  if (response.status === 204) return null
+  return isJson ? response.json() : response.text()
+}
+
+function normalizeId(value) {
+  if (value === '' || value == null) return value
+  const asNumber = Number(value)
+  return Number.isFinite(asNumber) && String(asNumber) === String(value).trim()
+    ? asNumber
+    : value
+}
+
+function getStudentLabel(student) {
+  if (!student || typeof student !== 'object') return String(student)
+  return (
+    student.name ||
+    student.fullName ||
+    [student.firstName, student.lastName].filter(Boolean).join(' ') ||
+    student.email ||
+    student.id ||
+    student.studentId ||
+    'Student'
+  )
+}
+
+function getCourseLabel(course) {
+  if (!course || typeof course !== 'object') return String(course)
+  return course.title || course.name || course.code || course.id || course.courseId || 'Course'
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [studentId, setStudentId] = useState('')
+  const [courseId, setCourseId] = useState('')
+
+  const studentsQuery = useQuery({
+    queryKey: ['students'],
+    queryFn: () => fetchJson(`${API_BASE_URL}/api/Students`),
+  })
+
+  const coursesQuery = useQuery({
+    queryKey: ['courses'],
+    queryFn: () => fetchJson(`${API_BASE_URL}/api/Courses`),
+  })
+
+  const previewMutation = useMutation({
+    mutationFn: () =>
+      fetchJson(`${API_BASE_URL}/api/Invoices/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: normalizeId(studentId),
+          courseId: normalizeId(courseId),
+        }),
+      }),
+  })
+
+  const students = useMemo(
+    () => (Array.isArray(studentsQuery.data) ? studentsQuery.data : []),
+    [studentsQuery.data],
+  )
+  const courses = useMemo(
+    () => (Array.isArray(coursesQuery.data) ? coursesQuery.data : []),
+    [coursesQuery.data],
+  )
+
+  const isInitialLoading = studentsQuery.isLoading || coursesQuery.isLoading
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+    <main className="page">
+      <header className="header">
+        <h1>Invoice preview</h1>
+        <p>Выберите студента и курс, затем нажмите Preview.</p>
+      </header>
+
+      <section className="card" aria-busy={isInitialLoading ? 'true' : 'false'}>
+        {isInitialLoading ? (
+          <div className="loading">Loading...</div>
+        ) : (
+          <>
+            <div className="formGrid">
+              <label className="field">
+                <span className="label">Student</span>
+                <select
+                  value={studentId}
+                  onChange={(e) => setStudentId(e.target.value)}
+                  disabled={studentsQuery.isError}
+                >
+                  <option value="">Select a student…</option>
+                  {students.map((s, index) => (
+                    <option
+                      key={String(s.id ?? s.studentId ?? s._id ?? index)}
+                      value={String(s.id ?? s.studentId ?? s._id ?? '')}
+                    >
+                      {getStudentLabel(s)}
+                    </option>
+                  ))}
+                </select>
+                {studentsQuery.isError ? (
+                  <span className="hint error">{studentsQuery.error?.message || 'Failed to load students'}</span>
+                ) : null}
+              </label>
+
+              <label className="field">
+                <span className="label">Course</span>
+                <select
+                  value={courseId}
+                  onChange={(e) => setCourseId(e.target.value)}
+                  disabled={coursesQuery.isError}
+                >
+                  <option value="">Select a course…</option>
+                  {courses.map((c, index) => (
+                    <option
+                      key={String(c.id ?? c.courseId ?? c._id ?? index)}
+                      value={String(c.id ?? c.courseId ?? c._id ?? '')}
+                    >
+                      {getCourseLabel(c)}
+                    </option>
+                  ))}
+                </select>
+                {coursesQuery.isError ? (
+                  <span className="hint error">{coursesQuery.error?.message || 'Failed to load courses'}</span>
+                ) : null}
+              </label>
+            </div>
+
+            <div className="actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => previewMutation.mutate()}
+                disabled={!studentId || !courseId || previewMutation.isPending}
+              >
+                {previewMutation.isPending ? 'Previewing…' : 'Preview'}
+              </button>
+            </div>
+
+            <div className="result">
+              {previewMutation.isError ? (
+                <div className="errorBox" role="alert">
+                  {previewMutation.error?.message || 'Preview request failed'}
+                </div>
+              ) : null}
+
+              {previewMutation.isSuccess ? (
+                <pre className="json">{JSON.stringify(previewMutation.data, null, 2)}</pre>
+              ) : null}
+            </div>
+          </>
+        )}
       </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    </main>
   )
 }
 
