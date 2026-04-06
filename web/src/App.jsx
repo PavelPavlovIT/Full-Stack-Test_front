@@ -48,6 +48,18 @@ function getCourseLabel(course) {
   return course.title || course.name || course.code || course.id || course.courseId || 'Course'
 }
 
+function isPresent(value) {
+  return value !== null && value !== undefined && value !== ''
+}
+
+function formatUsd(value) {
+  if (!isPresent(value)) return ''
+  if (typeof value === 'number' && Number.isFinite(value)) return `$${value.toFixed(2)}`
+  const text = String(value).trim()
+  if (!text) return ''
+  return text.startsWith('$') ? text : `$${text}`
+}
+
 function App() {
   const [studentId, setStudentId] = useState('')
   const [courseId, setCourseId] = useState('')
@@ -84,6 +96,18 @@ function App() {
   )
 
   const isInitialLoading = studentsQuery.isLoading || coursesQuery.isLoading
+
+  const previewResult = useMemo(() => {
+    const data = previewMutation.data
+    if (!data || typeof data !== 'object') return null
+
+    const status = data.status
+    const basePrice = data.basePrice
+    const calculatedPrice = data.calculatedPrice
+
+    if (!isPresent(status) || !isPresent(basePrice) || !isPresent(calculatedPrice)) return null
+    return { status, basePrice, calculatedPrice }
+  }, [previewMutation.data])
 
   return (
     <main className="page">
@@ -161,8 +185,21 @@ function App() {
                 </div>
               ) : null}
 
-              {previewMutation.isSuccess ? (
-                <pre className="json">{JSON.stringify(previewMutation.data, null, 2)}</pre>
+              {previewMutation.isSuccess && previewResult ? (
+                <div className="resultCard" aria-label="Invoice preview result">
+                  <div className="resultRow">
+                    <span className="resultKey">Student Status:</span>
+                    <span className="resultValue">{String(previewResult.status)}</span>
+                  </div>
+                  <div className="resultRow">
+                    <span className="resultKey">Base Price:</span>
+                    <span className="resultValue">{formatUsd(previewResult.basePrice)}</span>
+                  </div>
+                  <div className="resultRow">
+                    <span className="resultKey">Final Price:</span>
+                    <span className="resultValue resultValueStrong">{formatUsd(previewResult.calculatedPrice)}</span>
+                  </div>
+                </div>
               ) : null}
             </div>
           </>

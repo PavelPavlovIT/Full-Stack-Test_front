@@ -124,6 +124,36 @@ button.primary:disabled {
   font-family: var(--mono);
 }
 
+.resultCard {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--code-bg);
+  display: grid;
+  gap: 10px;
+}
+
+.resultRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resultKey {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.resultValue {
+  font-family: var(--mono);
+  color: var(--text-h);
+}
+
+.resultValueStrong {
+  font-weight: 700;
+}
+
 .json {
   margin: 0;
   border: 1px solid var(--border);
